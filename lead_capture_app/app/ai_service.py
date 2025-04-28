@@ -3,6 +3,8 @@ import openai
 import json
 from typing import Dict, List, Optional, Union, Any
 import re
+import time
+from openai import OpenAIError
 
 # Function to initialize OpenAI client with API key
 def get_openai_client():
@@ -10,8 +12,10 @@ def get_openai_client():
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable is not set")
     print(f"Using API key starting with: {api_key[:5]}...")  # Print first few chars to verify key is loaded
-    return openai.OpenAI(api_key=api_key,
-                         timeout=60.0)
+    return openai.OpenAI(
+        api_key=api_key,
+        timeout=90.0  # Increased timeout for slow connections
+    )
 
 # System prompt that defines the charity lead capture agent's behavior
 SYSTEM_PROMPT = """You are a friendly and helpful assistant for Kura Cares Charity, a not-for-profit organization in New Zealand. 
@@ -95,6 +99,8 @@ class LeadCaptureAgent:
     def __init__(self):
         self.client = get_openai_client()
         self.model = "gpt-3.5-turbo"  # Can be upgraded to gpt-4 for better results
+        self.max_retries = 3  # Number of times to retry API calls
+        self.retry_delay = 2  # Seconds to wait between retries
     
     def chat(self, user_message: str, conversation_history: List[Any] = None) -> Dict:
         """
@@ -107,6 +113,35 @@ class LeadCaptureAgent:
         Returns:
             Dict containing the assistant's response and any captured lead information
         """
+        return self._chat_with_retry(user_message, conversation_history)
+    
+    def _chat_with_retry(self, user_message: str, conversation_history: List[Any] = None) -> Dict:
+        """Implements retry logic for API calls"""
+        retries = 0
+        last_error = None
+        
+        while retries < self.max_retries:
+            try:
+                return self._process_chat(user_message, conversation_history)
+            except Exception as e:
+                retries += 1
+                last_error = str(e)
+                print(f"API call failed (attempt {retries}/{self.max_retries}): {str(e)}")
+                
+                if retries < self.max_retries:
+                    # Wait before retrying with exponential backoff
+                    sleep_time = self.retry_delay * (2 ** (retries - 1))
+                    print(f"Retrying in {sleep_time} seconds...")
+                    time.sleep(sleep_time)
+        
+        # All retries failed
+        return {
+            "message": f"I'm sorry, I'm having trouble connecting right now. Please try again later.",
+            "captured_lead_info": None
+        }
+    
+    def _process_chat(self, user_message: str, conversation_history: List[Any] = None) -> Dict:
+        """Core chat processing logic"""
         if conversation_history is None:
             conversation_history = []
         
@@ -155,43 +190,35 @@ class LeadCaptureAgent:
             "content": extract_info_prompt
         })
         
-        try:
-            # Get response from OpenAI
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=800
-            )
-            
-            # Extract the assistant's message
-            assistant_message = response.choices[0].message.content
-            
-            # Extract lead info JSON if present
-            lead_info = None
-            pattern = r'\[LEAD_INFO\](.*?)\[\/LEAD_INFO\]'
-            match = re.search(pattern, assistant_message, re.DOTALL)
-            
-            if match:
-                try:
-                    lead_info_str = match.group(1)
-                    lead_info = json.loads(lead_info_str)
-                    # Remove the lead info section from the response
-                    assistant_message = re.sub(pattern, '', assistant_message, flags=re.DOTALL).strip()
-                except json.JSONDecodeError:
-                    lead_info = None
-            
-            return {
-                "message": assistant_message,
-                "captured_lead_info": lead_info
-            }
-        except Exception as e:
-            print(f"Error calling OpenAI API: {str(e)}")
-            # Return a fallback response for debugging
-            return {
-                "message": f"I'm sorry, there was an error processing your request. Error: {str(e)}",
-                "captured_lead_info": None
-            }
+        # Get response from OpenAI
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=800
+        )
+        
+        # Extract the assistant's message
+        assistant_message = response.choices[0].message.content
+        
+        # Extract lead info JSON if present
+        lead_info = None
+        pattern = r'\[LEAD_INFO\](.*?)\[\/LEAD_INFO\]'
+        match = re.search(pattern, assistant_message, re.DOTALL)
+        
+        if match:
+            try:
+                lead_info_str = match.group(1)
+                lead_info = json.loads(lead_info_str)
+                # Remove the lead info section from the response
+                assistant_message = re.sub(pattern, '', assistant_message, flags=re.DOTALL).strip()
+            except json.JSONDecodeError:
+                lead_info = None
+        
+        return {
+            "message": assistant_message,
+            "captured_lead_info": lead_info
+        }
     
     def _analyze_conversation(self, conversation_history: List[Any]) -> Dict[str, bool]:
         """Analyze conversation history to determine what lead information has already been collected"""

@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import json
+import traceback
 from typing import List, Dict, Any
 import os
 from dotenv import load_dotenv
@@ -19,7 +20,7 @@ app = FastAPI(title="Charity Lead Capture API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://lead-capture-gamma.vercel.app"],  # For development - restrict to specific domains in production
+    allow_origins=["*"],  # Allow all origins temporarily for debugging
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,53 +60,66 @@ async def chat_with_agent(request: ChatRequest, db: Session = Depends(get_db)):
             conversation_history=request.conversation_history
         )
         
+        # If we got a fallback message due to API errors, return it without trying to process lead info
+        if "I'm having trouble connecting right now" in result["message"]:
+            return ChatResponse(
+                message=result["message"],
+                captured_lead_info=None
+            )
+            
         # Extract captured lead info if available
         lead_info = result.get("captured_lead_info")
         
         # If lead info was captured, store or update in database
         if lead_info and any(lead_info.values()):
-            # Create a new lead or update existing one
-            
-            # Convert conversation history to JSON-serializable format
-            serializable_history = convert_chat_messages_to_dict(request.conversation_history)
-            
-            lead_data = LeadCreate(
-                name=lead_info.get("name"),
-                email=lead_info.get("email"),
-                phone=lead_info.get("phone"),
-                interests=lead_info.get("interests"),
-                # Store the conversation for context
-                conversation=json.dumps(serializable_history)
-            )
-            
-            # Check if we already have this lead in the database
-            existing_lead = None
-            if lead_info.get("email"):
-                existing_lead = db.query(Lead).filter(Lead.email == lead_info.get("email")).first()
-            elif lead_info.get("phone"):
-                existing_lead = db.query(Lead).filter(Lead.phone == lead_info.get("phone")).first()
+            try:
+                # Create a new lead or update existing one
                 
-            if existing_lead:
-                # Update existing lead with new information
-                if lead_info.get("name") and not existing_lead.name:
-                    existing_lead.name = lead_info.get("name")
-                if lead_info.get("email") and not existing_lead.email:
-                    existing_lead.email = lead_info.get("email")
-                if lead_info.get("phone") and not existing_lead.phone:
-                    existing_lead.phone = lead_info.get("phone")
-                if lead_info.get("interests"):
-                    if existing_lead.interests:
-                        existing_lead.interests += f"; {lead_info.get('interests')}"
-                    else:
-                        existing_lead.interests = lead_info.get("interests")
-                existing_lead.conversation = json.dumps(serializable_history)
-                db.commit()
-            else:
-                # Create new lead
-                db_lead = Lead(**lead_data.dict())
-                db.add(db_lead)
-                db.commit()
-                db.refresh(db_lead)
+                # Convert conversation history to JSON-serializable format
+                serializable_history = convert_chat_messages_to_dict(request.conversation_history)
+                
+                lead_data = LeadCreate(
+                    name=lead_info.get("name"),
+                    email=lead_info.get("email"),
+                    phone=lead_info.get("phone"),
+                    interests=lead_info.get("interests"),
+                    # Store the conversation for context
+                    conversation=json.dumps(serializable_history)
+                )
+                
+                # Check if we already have this lead in the database
+                existing_lead = None
+                if lead_info.get("email"):
+                    existing_lead = db.query(Lead).filter(Lead.email == lead_info.get("email")).first()
+                elif lead_info.get("phone"):
+                    existing_lead = db.query(Lead).filter(Lead.phone == lead_info.get("phone")).first()
+                    
+                if existing_lead:
+                    # Update existing lead with new information
+                    if lead_info.get("name") and not existing_lead.name:
+                        existing_lead.name = lead_info.get("name")
+                    if lead_info.get("email") and not existing_lead.email:
+                        existing_lead.email = lead_info.get("email")
+                    if lead_info.get("phone") and not existing_lead.phone:
+                        existing_lead.phone = lead_info.get("phone")
+                    if lead_info.get("interests"):
+                        if existing_lead.interests:
+                            existing_lead.interests += f"; {lead_info.get('interests')}"
+                        else:
+                            existing_lead.interests = lead_info.get("interests")
+                    existing_lead.conversation = json.dumps(serializable_history)
+                    db.commit()
+                else:
+                    # Create new lead
+                    db_lead = Lead(**lead_data.dict())
+                    db.add(db_lead)
+                    db.commit()
+                    db.refresh(db_lead)
+            except Exception as db_error:
+                # If database operations fail, log the error but still return the chat response
+                print(f"Database error: {str(db_error)}")
+                print(traceback.format_exc())
+                # Continue execution to return the chat response
         
         return ChatResponse(
             message=result["message"],
@@ -113,9 +127,12 @@ async def chat_with_agent(request: ChatRequest, db: Session = Depends(get_db)):
         )
         
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing chat: {str(e)}"
+        print(f"Chat error: {str(e)}")
+        print(traceback.format_exc())
+        # Return a more user-friendly error
+        return ChatResponse(
+            message="I'm sorry, I'm having trouble responding right now. Please try again in a moment.",
+            captured_lead_info=None
         )
 
 @app.get("/leads", response_model=List[LeadResponse])
