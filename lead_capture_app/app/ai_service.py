@@ -10,7 +10,8 @@ def get_openai_client():
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable is not set")
     print(f"Using API key starting with: {api_key[:5]}...")  # Print first few chars to verify key is loaded
-    return openai.OpenAI(api_key=api_key)
+    return openai.OpenAI(api_key=api_key,
+                         timeout=60.0)
 
 # System prompt that defines the charity lead capture agent's behavior
 SYSTEM_PROMPT = """You are a friendly and helpful assistant for Kura Cares Charity, a not-for-profit organization in New Zealand. 
