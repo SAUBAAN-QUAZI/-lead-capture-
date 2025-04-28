@@ -2,7 +2,12 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import json
-from typing import List
+from typing import List, Dict, Any
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from .database import get_db, create_tables, Lead
 from .schemas import ChatRequest, ChatResponse, LeadCreate, LeadResponse
@@ -26,6 +31,18 @@ create_tables()
 # Initialize AI service
 lead_agent = LeadCaptureAgent()
 
+# Helper function to convert ChatMessage objects to dict for JSON serialization
+def convert_chat_messages_to_dict(messages):
+    result = []
+    for msg in messages:
+        if hasattr(msg, 'role') and hasattr(msg, 'content'):
+            # It's a ChatMessage object
+            result.append({"role": msg.role, "content": msg.content})
+        elif isinstance(msg, dict) and 'role' in msg and 'content' in msg:
+            # It's already a dict with the right structure
+            result.append(msg)
+    return result
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Charity Lead Capture API"}
@@ -48,13 +65,17 @@ async def chat_with_agent(request: ChatRequest, db: Session = Depends(get_db)):
         # If lead info was captured, store or update in database
         if lead_info and any(lead_info.values()):
             # Create a new lead or update existing one
+            
+            # Convert conversation history to JSON-serializable format
+            serializable_history = convert_chat_messages_to_dict(request.conversation_history)
+            
             lead_data = LeadCreate(
                 name=lead_info.get("name"),
                 email=lead_info.get("email"),
                 phone=lead_info.get("phone"),
                 interests=lead_info.get("interests"),
                 # Store the conversation for context
-                conversation=json.dumps(request.conversation_history)
+                conversation=json.dumps(serializable_history)
             )
             
             # Check if we already have this lead in the database
@@ -77,7 +98,7 @@ async def chat_with_agent(request: ChatRequest, db: Session = Depends(get_db)):
                         existing_lead.interests += f"; {lead_info.get('interests')}"
                     else:
                         existing_lead.interests = lead_info.get("interests")
-                existing_lead.conversation = json.dumps(request.conversation_history)
+                existing_lead.conversation = json.dumps(serializable_history)
                 db.commit()
             else:
                 # Create new lead

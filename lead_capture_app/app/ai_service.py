@@ -1,7 +1,7 @@
 import os
 import openai
 import json
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 import re
 
 # Function to initialize OpenAI client with API key
@@ -16,15 +16,23 @@ def get_openai_client():
 SYSTEM_PROMPT = """You are a friendly and helpful assistant for a charity foundation. 
 Your primary goal is to provide information about the charity's mission, programs, and how people can get involved.
 
-While conversing with users, gradually and naturally collect the following information:
-1. Their name
-2. Their email address
-3. Their phone number
-4. Their areas of interest related to charity work
+You must actively but naturally collect the following information during your conversation:
+1. Their name - Ask for their name early in the conversation
+2. Their email address - Ask for their email when they show interest in programs or donations
+3. Their phone number - Ask for their phone number when they express interest in volunteering or joining
+4. Their areas of interest related to charity work - Identify their interests throughout the conversation
+
+Collection strategies:
+- For name: "May I know your name so I can address you properly?"
+- For email: "Would you like to receive updates about our programs? I'd be happy to add your email to our newsletter."
+- For phone: "For volunteer opportunities, we can keep you updated via text. Would you mind sharing your phone number?"
+- For interests: "Which of our programs interests you the most?"
 
 Important guidelines:
 - Be warm, empathetic, and informative
-- Never be pushy when asking for information
+- Ask for one piece of information at a time, don't overwhelm users with multiple requests
+- Space out your requests throughout the conversation
+- Always ask for information in a natural context
 - Respect if users don't want to share certain details
 - Provide valuable information about the charity's work
 - Focus on how the charity helps communities in need
@@ -39,7 +47,7 @@ class LeadCaptureAgent:
         self.client = get_openai_client()
         self.model = "gpt-3.5-turbo"  # Can be upgraded to gpt-4 for better results
     
-    def chat(self, user_message: str, conversation_history: List[Dict[str, str]] = None) -> Dict:
+    def chat(self, user_message: str, conversation_history: List[Any] = None) -> Dict:
         """
         Process a user message and generate a response while trying to capture lead information.
         
@@ -56,12 +64,28 @@ class LeadCaptureAgent:
         # Prepare the messages for the OpenAI API
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         
-        # Add conversation history
+        # Add conversation history - convert ChatMessage objects to dictionaries if needed
         for msg in conversation_history:
-            messages.append(msg)
+            # Check if it's already a dict or if it's a ChatMessage object
+            if isinstance(msg, dict):
+                messages.append(msg)
+            else:
+                # Convert ChatMessage to dict (assuming it has role and content attributes)
+                messages.append({"role": msg.role, "content": msg.content})
         
         # Add the latest user message
         messages.append({"role": "user", "content": user_message})
+        
+        # Analyze current conversation to determine what information we already have
+        collected_info = self._analyze_conversation(conversation_history)
+        
+        # Create a reminder for the model about what information still needs to be collected
+        reminder_prompt = self._create_collection_reminder(collected_info)
+        if reminder_prompt:
+            messages.append({
+                "role": "system", 
+                "content": reminder_prompt
+            })
         
         # Add a special instruction to extract lead info
         extract_info_prompt = """
@@ -118,4 +142,92 @@ class LeadCaptureAgent:
             return {
                 "message": f"I'm sorry, there was an error processing your request. Error: {str(e)}",
                 "captured_lead_info": None
-            } 
+            }
+    
+    def _analyze_conversation(self, conversation_history: List[Any]) -> Dict[str, bool]:
+        """Analyze conversation history to determine what lead information has already been collected"""
+        collected_info = {
+            "name": False,
+            "email": False,
+            "phone": False,
+            "interests": False
+        }
+        
+        # Simple pattern matching for each type of information
+        name_patterns = [r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', r'My name is ([A-Za-z ]+)', r'I\'m ([A-Za-z ]+)', r'call me ([A-Za-z ]+)']
+        email_patterns = [r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b']
+        phone_patterns = [r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b', r'\b\+\d{1,3}[-.]?\d{3}[-.]?\d{3}[-.]?\d{4}\b']
+        
+        # Check for captured lead info in previous assistant messages
+        for msg in conversation_history:
+            content = ""
+            if isinstance(msg, dict):
+                content = msg.get("content", "")
+            else:
+                content = msg.content if hasattr(msg, "content") else ""
+            
+            # Check for lead info patterns in user messages
+            if isinstance(msg, dict) and msg.get("role") == "user" or (hasattr(msg, "role") and msg.role == "user"):
+                for pattern in name_patterns:
+                    if re.search(pattern, content):
+                        collected_info["name"] = True
+                        break
+                
+                for pattern in email_patterns:
+                    if re.search(pattern, content):
+                        collected_info["email"] = True
+                        break
+                        
+                for pattern in phone_patterns:
+                    if re.search(pattern, content):
+                        collected_info["phone"] = True
+                        break
+            
+            # Check if "interests" is mentioned in content
+            if "interest" in content.lower() or "program" in content.lower():
+                collected_info["interests"] = True
+            
+            # Check for [LEAD_INFO] sections in assistant messages
+            if isinstance(msg, dict) and msg.get("role") == "assistant" or (hasattr(msg, "role") and msg.role == "assistant"):
+                pattern = r'\[LEAD_INFO\](.*?)\[\/LEAD_INFO\]'
+                match = re.search(pattern, content, re.DOTALL)
+                if match:
+                    try:
+                        lead_info_str = match.group(1)
+                        lead_info = json.loads(lead_info_str)
+                        if lead_info.get("name"):
+                            collected_info["name"] = True
+                        if lead_info.get("email"):
+                            collected_info["email"] = True
+                        if lead_info.get("phone"):
+                            collected_info["phone"] = True
+                        if lead_info.get("interests"):
+                            collected_info["interests"] = True
+                    except json.JSONDecodeError:
+                        pass
+        
+        return collected_info
+    
+    def _create_collection_reminder(self, collected_info: Dict[str, bool]) -> str:
+        """Create a reminder prompt based on what information still needs to be collected"""
+        missing_info = []
+        
+        if not collected_info["name"]:
+            missing_info.append("name (try to ask for their name naturally)")
+        if not collected_info["email"]:
+            missing_info.append("email address (ask when discussing updates or newsletter)")
+        if not collected_info["phone"]:
+            missing_info.append("phone number (ask when discussing volunteer opportunities)")
+        if not collected_info["interests"]:
+            missing_info.append("areas of interest (ask what programs they're most interested in)")
+        
+        if missing_info:
+            reminder = f"""
+Remember to collect the following information in your response if appropriate:
+{', '.join(missing_info)}
+
+Ask for just ONE piece of missing information in your next response, in a natural and conversational way.
+"""
+            return reminder
+        
+        return "" 
