@@ -1,0 +1,26 @@
+# Frontend Setup Instructions
+
+To create a new Next.js app, run the following command:
+
+```bash
+npx create-next-app@latest lead-capture-frontend --typescript --tailwind --eslint
+```
+
+When prompted:
+- Choose "Yes" for App Router
+- Choose "Yes" for customizing default import alias (@/*)
+
+After installation:
+1. Navigate to the project: `cd lead-capture-frontend`
+2. Install additional dependencies for OpenAI integration:
+```bash
+npm install openai
+```
+3. Start the development server:
+```bash
+npm run dev
+```
+
+# Connecting to Backend
+The frontend will connect to the FastAPI backend using fetch API.
+We'll implement this after completing the backend. 
