@@ -1,7 +1,7 @@
 // API utilities for communicating with the backend
 
 // Backend API URL - can be overridden by environment variable
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://lead-capture-9mnb.onrender.com';
 
 // Types matching the backend schemas
 export interface ChatMessage {
