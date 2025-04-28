@@ -2,6 +2,7 @@
 
 import React from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 
 // Dynamic import for the chat container to avoid hydration issues
 const ChatContainer = dynamic(() => import('./components/ChatContainer'), {
@@ -16,6 +17,14 @@ export default function Home() {
         <div className="container mx-auto">
           <h1 className="text-2xl font-bold text-blue-700">Charity Foundation</h1>
           <p className="text-sm text-gray-600">Making a difference together</p>
+        </div>
+        <div className="container mx-auto text-right mt-1">
+          <Link 
+            href="/dashboard" 
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Admin Dashboard →
+          </Link>
         </div>
       </header>
       
