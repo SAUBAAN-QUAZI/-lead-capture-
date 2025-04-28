@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 
 // Stats Card Component
 interface StatsCardProps {
@@ -105,13 +104,6 @@ export default function Dashboard() {
     </svg>
   );
 
-  // Program icon
-  const ProgramIcon = () => (
-    <svg className="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-    </svg>
-  );
-
   return (
     <>
       <h1 className="text-2xl font-bold mb-6">Dashboard Overview</h1>
@@ -194,13 +186,13 @@ export default function Dashboard() {
                 />
                 <LeadItem 
                   name="Sarah Wilson" 
-                  lastMessage="I'm 28 years old" 
+                  lastMessage="I&apos;m 28 years old" 
                   time="2 hours ago" 
                   avatar="SW" 
                 />
                 <LeadItem 
                   name="David Lee" 
-                  lastMessage="I'd like to volunteer for the weekend event" 
+                  lastMessage="I&apos;d like to volunteer for the weekend event" 
                   time="5 hours ago" 
                   avatar="DL" 
                 />
@@ -258,7 +250,7 @@ export default function Dashboard() {
                   </svg>
                 </div>
                 <div className="bg-gray-100 rounded-lg p-3 max-w-[80%]">
-                  <p className="text-sm">Hi Jessica! I'm the AI assistant for our charity organization. I'd like to ask you a few questions to help you get started with our programs. What's your age?</p>
+                  <p className="text-sm">Hi Jessica! I&apos;m the AI assistant for our charity organization. I&apos;d like to ask you a few questions to help you get started with our programs. What&apos;s your age?</p>
                   <span className="text-xs text-gray-500 mt-1 block">10:15 AM</span>
                 </div>
               </div>
@@ -266,7 +258,7 @@ export default function Dashboard() {
               {/* User Message */}
               <div className="flex items-start justify-end">
                 <div className="bg-blue-100 rounded-lg p-3 max-w-[80%]">
-                  <p className="text-sm">I'm 32 years old.</p>
+                  <p className="text-sm">I&apos;m 32 years old.</p>
                   <span className="text-xs text-gray-500 mt-1 block">10:16 AM</span>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white ml-2">
@@ -290,7 +282,7 @@ export default function Dashboard() {
               {/* User Message */}
               <div className="flex items-start justify-end">
                 <div className="bg-blue-100 rounded-lg p-3 max-w-[80%]">
-                  <p className="text-sm">I'm Māori.</p>
+                  <p className="text-sm">I&apos;m Māori.</p>
                   <span className="text-xs text-gray-500 mt-1 block">10:17 AM</span>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white ml-2">

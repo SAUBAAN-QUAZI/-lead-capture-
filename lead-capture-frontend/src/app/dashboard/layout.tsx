@@ -3,7 +3,6 @@
 import React, { ReactNode, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import Image from 'next/image';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -11,7 +10,7 @@ interface DashboardLayoutProps {
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const pathname = usePathname();
-  const [notifications, setNotifications] = useState(3);
+  const [notifications] = useState(3);
 
   const isActive = (path: string) => {
     return pathname === path || pathname?.startsWith(path + '/');
