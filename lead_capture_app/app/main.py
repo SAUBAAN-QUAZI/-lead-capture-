@@ -19,7 +19,7 @@ app = FastAPI(title="Charity Lead Capture API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For development - restrict to specific domains in production
+    allow_origins=["https://lead-capture-gamma.vercel.app"],  # For development - restrict to specific domains in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
