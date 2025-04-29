@@ -23,10 +23,6 @@ function getApiBaseUrl() {
 // This API URL is determined at runtime
 const API_URL = getApiBaseUrl();
 
-// Track backend availability
-let isProductionBackendAvailable = true;
-let isLocalBackendAvailable = true;
-
 // Types matching the backend schemas
 export interface ChatMessage {
   role: 'user' | 'assistant';
