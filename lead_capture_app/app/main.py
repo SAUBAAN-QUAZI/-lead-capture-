@@ -6,21 +6,39 @@ import traceback
 from typing import List, Dict, Any
 import os
 from dotenv import load_dotenv
+import time
 
 # Load environment variables from .env file
 load_dotenv()
 
 from .database import get_db, create_tables, Lead
 from .schemas import ChatRequest, ChatResponse, LeadCreate, LeadResponse
-from .ai_service import LeadCaptureAgent
+from .ai_service import LeadCaptureAgent, get_openai_client
 
 # Initialize FastAPI app
 app = FastAPI(title="Charity Lead Capture API")
 
+# Get allowed origins from environment or use defaults
+def get_allowed_origins():
+    # Default origins
+    origins = [
+        "http://localhost:3000",             # Next.js local dev
+        "http://127.0.0.1:3000",             # Next.js local dev alternative
+        "https://lead-capture-gamma.vercel.app"  # Production frontend
+    ]
+    
+    # Add any custom origins from environment variable
+    if os.getenv("ALLOWED_ORIGINS"):
+        custom_origins = os.getenv("ALLOWED_ORIGINS").split(",")
+        origins.extend([origin.strip() for origin in custom_origins])
+    
+    print(f"CORS: Allowing origins: {origins}")
+    return origins
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins temporarily for debugging
+    allow_origins=get_allowed_origins(),  # Dynamic origins based on environment
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -151,4 +169,82 @@ def get_lead(lead_id: int, db: Session = Depends(get_db)):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead not found")
-    return lead 
+    return lead
+
+@app.get("/test-openai")
+async def test_openai_connection():
+    """Test the OpenAI connection directly"""
+    try:
+        client = get_openai_client()
+        print("DIAGNOSTIC: OpenAI client created successfully")
+        
+        # First, try a simple models list call
+        try:
+            print("DIAGNOSTIC: Testing models endpoint")
+            models = client.models.list()
+            print(f"DIAGNOSTIC: Models endpoint successful, found {len(models.data)} models")
+        except Exception as e:
+            print(f"DIAGNOSTIC: Models endpoint failed: {str(e)}")
+        
+        # Then try a chat completion
+        print("DIAGNOSTIC: Testing chat completions endpoint")
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "Say 'Connection successful'"}],
+            max_tokens=20
+        )
+        print("DIAGNOSTIC: Chat completion successful")
+        
+        return {
+            "status": "success", 
+            "response": response.choices[0].message.content,
+            "api_key_prefix": os.getenv("OPENAI_API_KEY")[:5] + "..." if os.getenv("OPENAI_API_KEY") else "None"
+        }
+    except Exception as e:
+        print(f"DIAGNOSTIC: Test endpoint error: {str(e)}")
+        print(f"DIAGNOSTIC: Error type: {type(e).__name__}")
+        
+        return {
+            "status": "error", 
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "api_key_prefix": os.getenv("OPENAI_API_KEY")[:5] + "..." if os.getenv("OPENAI_API_KEY") else "None"
+        }
+
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint that provides detailed backend status information.
+    This helps the frontend determine if the backend is operational.
+    """
+    try:
+        # Check basic API functionality
+        client = get_openai_client()
+        openai_status = "healthy"
+    except Exception as e:
+        openai_status = f"error: {str(e)}"
+    
+    # Check database connection
+    db_status = "unknown"
+    try:
+        # Get DB session
+        db = next(get_db())
+        # Test a simple query
+        db.execute("SELECT 1").fetchall()
+        db_status = "healthy"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
+    # Deployment information
+    env = os.getenv("ENVIRONMENT", "development")
+    
+    return {
+        "status": "operational",
+        "environment": env,
+        "version": "1.0.0",
+        "timestamp": time.time(),
+        "components": {
+            "database": db_status,
+            "openai_api": openai_status
+        }
+    } 
